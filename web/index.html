@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Somesh AI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#f5f4ef; --card:#ffffff; --soft:#f1efe8; --line:rgba(0,0,0,.12);
+  --text:#1f1e1d; --muted:#6b6a65; --accent:#2c6fd1; --accent-bg:#e6f1fb; --accent-text:#0c447c;
+  --ok:#3b6d11; --warn:#854f0b; --err:#a32d2d;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#1a1a19; --card:#262624; --soft:#30302e; --line:rgba(255,255,255,.12);
+    --text:#f1efe8; --muted:#a8a7a0; --accent:#378add; --accent-bg:#0c447c; --accent-text:#e6f1fb;
+    --ok:#97c459; --warn:#ef9f27; --err:#f09595;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Telugu",sans-serif;display:flex;justify-content:center}
+.app{width:100%;max-width:480px;height:100dvh;display:flex;flex-direction:column;background:var(--card);border-left:.5px solid var(--line);border-right:.5px solid var(--line)}
+header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:.5px solid var(--line)}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--accent-bg);color:var(--accent-text);display:flex;align-items:center;justify-content:center;font-weight:500;font-size:14px}
+.title{flex:1}
+.title p{margin:0}
+.name{font-weight:500;font-size:16px}
+.status{font-size:12px;color:var(--ok)}
+.status.listening{color:var(--err)} .status.busy{color:var(--warn)} .status.error{color:var(--err)}
+button{font:inherit;color:var(--text);background:transparent;border:.5px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
+button:active{transform:scale(.97)}
+#chat{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding:16px}
+.bubble{max-width:85%;padding:9px 13px;border-radius:14px;font-size:15px;line-height:1.55;white-space:pre-wrap;word-wrap:break-word}
+.me{align-self:flex-end;background:var(--accent-bg);color:var(--accent-text)}
+.ai{align-self:flex-start;background:var(--soft)}
+.replay{display:inline-flex;align-items:center;gap:4px;margin-top:6px;font-size:12px;color:var(--muted);border:none;padding:0;background:none}
+.note{align-self:flex-start;font-size:13px;color:var(--muted)}
+.note.err{color:var(--err)}
+.empty{margin:auto;text-align:center;color:var(--muted);font-size:14px;line-height:1.6;padding:0 24px}
+.controls{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 16px 4px}
+#mic{width:80px;height:80px;border-radius:50%;border:none;background:var(--accent);color:#fff;font-size:34px;display:flex;align-items:center;justify-content:center}
+#mic.rec{background:var(--err);animation:pulse 1.2s ease-in-out infinite}
+#mic.wait{opacity:.6}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+.hint{margin:0;font-size:12px;color:var(--muted)}
+form{display:flex;gap:8px;padding:12px 16px calc(14px + env(safe-area-inset-bottom))}
+input{flex:1;font:inherit;font-size:15px;color:var(--text);background:var(--card);border:.5px solid var(--line);border-radius:8px;padding:9px 12px;min-width:0}
+input:focus{outline:2px solid var(--accent-bg);border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="avatar">SS</div>
+    <div class="title">
+      <p class="name">Somesh AI</p>
+      <p class="status" id="status"><i class="ti ti-circle-dot"></i> Ready</p>
+    </div>
+    <button id="reset" aria-label="New conversation" title="New conversation"><i class="ti ti-refresh"></i></button>
+  </header>
+
+  <div id="chat">
+    <p class="empty" id="empty">Tap the mic and talk in Telugu, English or both.<br>I'll answer in your voice.</p>
+  </div>
+
+  <div class="controls">
+    <button id="mic" aria-label="Talk"><i class="ti ti-microphone"></i></button>
+    <p class="hint" id="hint">Tap to talk, tap again to stop</p>
+  </div>
+
+  <form id="typeForm">
+    <input id="typeBox" type="text" placeholder="Or type a message" autocomplete="off">
+    <button type="submit" aria-label="Send"><i class="ti ti-send"></i></button>
+  </form>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const chat = $('chat'), statusEl = $('status'), mic = $('mic'), hint = $('hint');
+let busy = false, recorder = null, chunks = [], stream = null;
+
+/* ---------- status ---------- */
+function setStatus(text, cls = '') {
+  const icon = {listening:'ti-microphone', busy:'ti-loader-2', error:'ti-alert-circle'}[cls] || 'ti-circle-dot';
+  statusEl.className = 'status ' + cls;
+  statusEl.innerHTML = `<i class="ti ${icon}"></i> ${text}`;
+}
+
+/* ---------- chat bubbles ---------- */
+function scrollDown(){ chat.scrollTop = chat.scrollHeight; }
+function addBubble(cls, text){
+  $('empty')?.remove();
+  const b = document.createElement('div');
+  b.className = 'bubble ' + cls;
+  b.textContent = text;
+  chat.appendChild(b); scrollDown();
+  return b;
+}
+function addNote(text, err=false){
+  const n = document.createElement('div');
+  n.className = 'note' + (err ? ' err' : '');
+  n.textContent = text;
+  chat.appendChild(n); scrollDown();
+  return n;
+}
+
+/* ---------- audio playback (queued, sentence by sentence) ---------- */
+let ctx = null, playHead = 0;
+function audioCtx(){
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+function b64ToArrayBuffer(b64){
+  const bin = atob(b64), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+async function decode(b64){ return await audioCtx().decodeAudioData(b64ToArrayBuffer(b64)); }
+function enqueue(buffer){
+  const c = audioCtx();
+  const src = c.createBufferSource();
+  src.buffer = buffer; src.connect(c.destination);
+  playHead = Math.max(playHead, c.currentTime + 0.05);
+  src.start(playHead);
+  playHead += buffer.duration;
+  return playHead;
+}
+function stopAll(){ if (ctx){ ctx.close(); ctx = null; playHead = 0; } }
+
+/* ---------- send to server & read the streamed reply ---------- */
+async function converse(url, body){
+  busy = true; mic.classList.add('wait');
+  setStatus('Thinking…', 'busy');
+  let aiBubble = null, sayNote = null, buffers = [], endsAt = 0, gotUser = false;
+  try {
+    const res = await fetch(url, {method:'POST', body});
+    if (!res.ok) throw new Error('Server error ' + res.status);
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let pending = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      pending += dec.decode(value, {stream:true});
+      let nl;
+      while ((nl = pending.indexOf('\n')) >= 0) {
+        const line = pending.slice(0, nl).trim(); pending = pending.slice(nl + 1);
+        if (!line) continue;
+        const msg = JSON.parse(line);
+        if (msg.type === 'user') {
+          gotUser = true;
+          if (!msg.text) { addNote("Didn't catch that. Try again.", true); continue; }
+          if (body.has('audio')) addBubble('me', msg.text);
+        } else if (msg.type === 'say') {
+          if (!aiBubble) { aiBubble = addBubble('ai', msg.text); sayNote = addNote('Speaking…'); }
+          else { aiBubble.textContent += ' ' + msg.text; }
+          chat.appendChild(sayNote); scrollDown();
+          setStatus('Speaking…', 'busy');
+          const buf = await decode(msg.audio);
+          buffers.push(buf);
+          endsAt = enqueue(buf);
+        } else if (msg.type === 'error') {
+          addNote(msg.text, true);
+        }
+      }
+    }
+    if (!gotUser) throw new Error('No reply from server');
+  } catch (e) {
+    addNote(e.message || 'Something went wrong', true);
+    setStatus('Error', 'error');
+  }
+  if (aiBubble) addReplay(aiBubble, buffers);
+  const left = ctx ? Math.max(0, endsAt - ctx.currentTime) : 0;
+  setTimeout(() => { sayNote?.remove(); if (!statusEl.classList.contains('error')) setStatus('Ready'); }, left * 1000);
+  busy = false; mic.classList.remove('wait');
+}
+
+function addReplay(bubble, buffers){
+  if (!buffers.length) return;
+  const btn = document.createElement('button');
+  btn.className = 'replay';
+  btn.innerHTML = '<i class="ti ti-player-play"></i> Replay in your voice';
+  btn.onclick = () => { stopAll(); buffers.forEach(enqueue); };
+  bubble.appendChild(document.createElement('br'));
+  bubble.appendChild(btn);
+}
+
+/* ---------- mic: tap to start, tap to stop ---------- */
+function pickMime(){
+  for (const t of ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus'])
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+  return '';
+}
+async function startRec(){
+  if (!navigator.mediaDevices?.getUserMedia) {
+    addNote('Microphone needs https. Open the secure link (see README).', true); return;
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}});
+  } catch { addNote('Allow microphone access to talk.', true); return; }
+  stopAll(); audioCtx();
+  const mime = pickMime();
+  recorder = new MediaRecorder(stream, mime ? {mimeType:mime} : {});
+  chunks = [];
+  recorder.ondataavailable = e => e.data.size && chunks.push(e.data);
+  recorder.onstop = () => {
+    stream.getTracks().forEach(t => t.stop());
+    const type = recorder.mimeType || 'audio/webm';
+    const ext = type.includes('mp4') ? 'm4a' : type.includes('ogg') ? 'ogg' : 'webm';
+    const fd = new FormData();
+    fd.append('audio', new Blob(chunks, {type}), 'speech.' + ext);
+    converse('/api/talk', fd);
+  };
+  recorder.start();
+  mic.classList.add('rec'); mic.innerHTML = '<i class="ti ti-player-stop"></i>';
+  hint.textContent = 'Listening… tap to stop';
+  setStatus('Listening…', 'listening');
+}
+function stopRec(){
+  recorder?.stop(); recorder = null;
+  mic.classList.remove('rec'); mic.innerHTML = '<i class="ti ti-microphone"></i>';
+  hint.textContent = 'Tap to talk, tap again to stop';
+}
+mic.onclick = () => {
+  if (recorder) return stopRec();
+  if (busy) return;
+  startRec();
+};
+
+/* ---------- typing ---------- */
+$('typeForm').onsubmit = e => {
+  e.preventDefault();
+  const text = $('typeBox').value.trim();
+  if (!text || busy) return;
+  $('typeBox').value = '';
+  stopAll(); audioCtx();
+  addBubble('me', text);
+  const fd = new FormData(); fd.append('text', text);
+  converse('/api/chat', fd);
+};
+
+/* ---------- new conversation ---------- */
+$('reset').onclick = async () => {
+  if (busy) return;
+  stopAll();
+  try { await fetch('/api/reset', {method:'POST'}); } catch {}
+  chat.innerHTML = '<p class="empty" id="empty">New conversation. Tap the mic to start.</p>';
+  setStatus('Ready');
+};
+</script>
+</body>
+</html>
