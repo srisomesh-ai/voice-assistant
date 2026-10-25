@@ -1,0 +1,12 @@
+# Install PyTorch FIRST, matching your machine (see README), then: pip install -r requirements.txt
+fastapi>=0.110
+uvicorn[standard]>=0.29
+python-multipart>=0.0.9
+requests>=2.31
+pyyaml>=6.0
+numpy
+soundfile>=0.12
+faster-whisper>=1.1
+transformers
+# IndicF5 runtime (needed by the voice-clone model's code)
+git+https://github.com/ai4bharat/IndicF5.git

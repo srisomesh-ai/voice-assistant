@@ -1,0 +1,34 @@
+# ------------------------------------------------------------
+#  Somesh Voice Assistant — settings
+#  Everything runs on your own computer. No paid APIs.
+# ------------------------------------------------------------
+
+server:
+  host: 0.0.0.0
+  port: 8000
+
+# Ears — speech to text (faster-whisper, offline)
+stt:
+  # GPU: large-v3-turbo (best Telugu)   |   CPU / small GPU: small or medium
+  model: large-v3-turbo
+  device: auto            # auto | cuda | cpu
+  compute_type: auto      # auto | float16 | int8_float16 | int8
+  language: null          # null = auto-detect (Telugu/English). Or "te" / "en"
+
+# Brain — local LLM through Ollama (https://ollama.com)
+llm:
+  url: http://127.0.0.1:11434
+  # 8 GB+ GPU: gemma3:12b   |   4–6 GB GPU or CPU: gemma3:4b
+  model: gemma3:4b
+  temperature: 0.7
+  max_history_turns: 10   # how many past exchanges it remembers in a session
+  persona_file: persona.md
+
+# Mouth — your cloned voice (IndicF5 family, offline)
+tts:
+  # dheeyantra/dhee-indic-f5 handles Telugu + Indian English + mixed sentences
+  # ai4bharat/IndicF5 is the original (Indian languages only)
+  model: dheeyantra/dhee-indic-f5
+  ref_audio: voice/my_voice.wav   # 10–15 sec clean clip of YOUR voice
+  ref_text_file: voice/my_voice.txt  # exact words spoken in that clip
+  sample_rate: 24000
